@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subscribe</title>
+<meta name="description" content="Add the seminar series to your own calendar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/config.js"></script>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap head-inner">
+    <a class="brand" href="index.html"><strong data-bind="seriesName">Seminar Series</strong></a>
+    <nav class="nav">
+      <a href="index.html">Calendar</a>
+      <a href="schedule.html">Full season</a>
+      <a href="archive.html">Past talks</a>
+      <a href="subscribe.html">Subscribe</a>
+    </nav>
+    <div id="session-slot"></div>
+    <button class="menu-btn" aria-label="Menu">&#9776;</button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap narrow">
+    <h1>Add it to your calendar</h1>
+    <p class="tagline">Subscribe once and every talk appears in your own calendar, updating itself as titles are confirmed.</p>
+  </div>
+</section>
+
+<main class="wrap narrow prose">
+  <div id="banner-slot"></div>
+
+  <h2>Subscription link</h2>
+  <p>Copy this address, then paste it into your calendar app using the steps below.</p>
+  <div class="copybox">
+    <input class="field" id="feed" readonly value="Loading…">
+    <button class="btn" id="copy">Copy</button>
+  </div>
+  <p class="hint" id="copy-note"></p>
+
+  <h3>Google Calendar</h3>
+  <ol>
+    <li>Open Google Calendar on a computer.</li>
+    <li>Next to <strong>Other calendars</strong> in the left column, click <strong>+</strong> then <strong>From URL</strong>.</li>
+    <li>Paste the address above and click <strong>Add calendar</strong>.</li>
+  </ol>
+
+  <h3>Outlook</h3>
+  <ol>
+    <li>In Outlook on the web, open <strong>Calendar</strong>.</li>
+    <li>Choose <strong>Add calendar</strong> then <strong>Subscribe from web</strong>.</li>
+    <li>Paste the address, give it a name, and save.</li>
+  </ol>
+
+  <h3>Apple Calendar</h3>
+  <ol>
+    <li>Choose <strong>File</strong> then <strong>New Calendar Subscription</strong>.</li>
+    <li>Paste the address and choose how often it should refresh.</li>
+  </ol>
+
+  <h2>One-off download</h2>
+  <p>Prefer a snapshot instead of a live subscription? This downloads the current season as a single file you can import. It will not update when titles change.</p>
+  <p><button class="btn ghost" id="dl">Download .ics file</button></p>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-inner">
+    <span data-bind="seriesName">Seminar Series</span>
+    <a href="index.html">Calendar</a>
+    <a href="schedule.html">Full season</a>
+    <a href="dashboard.html">Organizer</a>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var feed = document.getElementById('feed');
+  var noteEl = document.getElementById('copy-note');
+
+  document.getElementById('dl').addEventListener('click', function () { SEM.downloadIcs(); });
+
+  document.getElementById('copy').addEventListener('click', function () {
+    feed.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    if (navigator.clipboard) navigator.clipboard.writeText(feed.value).then(function () { ok = true; });
+    noteEl.textContent = 'Copied to your clipboard.';
+    setTimeout(function () { noteEl.textContent = ''; }, 3000);
+  });
+
+  SEM.onRender(function () {
+    var url = SEM.icsUrl();
+    feed.value = url || 'Not available until the site is connected to its schedule.';
+    document.getElementById('copy').disabled = !url;
+  });
+})();
+</script>
+</body>
+</html>

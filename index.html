@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar</title>
+<meta name="description" content="Schedule and speaker sign-up for the weekly seminar series.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/config.js"></script>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap head-inner">
+    <a class="brand" href="index.html"><strong data-bind="seriesName">Seminar Series</strong></a>
+    <nav class="nav">
+      <a href="index.html">Calendar</a>
+      <a href="schedule.html">Full season</a>
+      <a href="archive.html">Past talks</a>
+      <a href="subscribe.html">Subscribe</a>
+    </nav>
+    <div id="session-slot"></div>
+    <button class="menu-btn" aria-label="Menu">&#9776;</button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1 data-bind="seriesName">Seminar Series</h1>
+    <p class="tagline" data-bind="tagline" hidden></p>
+    <div class="meta" id="hero-meta"></div>
+    <div id="next-up"></div>
+  </div>
+</section>
+
+<main class="wrap">
+  <div id="banner-slot"></div>
+
+  <div class="toolbar">
+    <h2>This season</h2>
+    <div class="seg" id="view-toggle">
+      <button data-view="calendar" aria-pressed="true">Calendar</button>
+      <button data-view="list" aria-pressed="false">List</button>
+    </div>
+  </div>
+
+  <div class="months" id="month-nav"></div>
+  <div id="view-host"><div class="skeleton"></div></div>
+
+  <div class="legend">
+    <span><i style="background:var(--ok)"></i> Speaker confirmed</span>
+    <span><i style="background:var(--warn)"></i> Awaiting a speaker</span>
+    <span><i style="background:var(--open)"></i> Not yet allocated</span>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-inner">
+    <span data-bind="seriesName">Seminar Series</span>
+    <a href="schedule.html">Full season</a>
+    <a href="subscribe.html">Add to your calendar</a>
+    <a href="dashboard.html">Organizer</a>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var view = 'calendar';
+  try { view = localStorage.getItem('seminar.view') || 'calendar'; } catch (e) {}
+
+  var host = document.getElementById('view-host');
+  var monthNav = document.getElementById('month-nav');
+  var toggle = document.getElementById('view-toggle');
+
+  toggle.addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    view = b.dataset.view;
+    try { localStorage.setItem('seminar.view', view); } catch (err) {}
+    SEM.render();
+  });
+
+  function narrow() { return window.matchMedia('(max-width: 640px)').matches; }
+
+  SEM.onRender(function (state) {
+    var mode = narrow() ? 'list' : view;
+    SEM.$$('#view-toggle button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.view === view ? 'true' : 'false');
+    });
+    toggle.hidden = narrow();
+    monthNav.hidden = mode !== 'calendar';
+
+    if (!state.slots.length) {
+      host.innerHTML = '';
+      host.appendChild(SEM.emptyBlock('No dates yet',
+        'The season has not been published. Check back shortly.'));
+      return;
+    }
+
+    if (mode === 'calendar') {
+      SEM.renderMonthNav(monthNav);
+      SEM.renderCalendar(host);
+    } else {
+      var t = SEM.todayKey();
+      var rest = state.slots.filter(function (s) { return s.date >= t; });
+      SEM.renderList(host, rest.length ? rest : state.slots, {
+        emptyTitle: 'The season has finished',
+        emptyBody: 'Past talks are listed in the archive.'
+      });
+    }
+    renderNext(state);
+  });
+
+  function renderNext(state) {
+    var box = document.getElementById('next-up');
+    var next = SEM.upcoming()[0];
+    box.innerHTML = '';
+    if (!next) return;
+    var d = SEM.parseDate(next.date);
+    var card = SEM.el('div', 'next-up');
+
+    var when = SEM.el('div', 'when');
+    when.appendChild(SEM.el('div', 'd', String(d.getDate())));
+    when.appendChild(SEM.el('div', 'm', ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]));
+    card.appendChild(when);
+
+    var what = SEM.el('div', 'what');
+    what.appendChild(SEM.el('div', 'eyebrow', next.date === SEM.todayKey() ? 'Today' : 'Next up'));
+    if (next.filled) {
+      what.appendChild(SEM.el('h2', null, next.title));
+      what.appendChild(SEM.el('p', null, next.speaker + ' · ' + next.lab));
+    } else if (next.type === 'special') {
+      what.appendChild(SEM.el('h2', null, next.note || 'Special session'));
+    } else {
+      what.appendChild(SEM.el('h2', null, next.lab || 'Not yet allocated'));
+      what.appendChild(SEM.el('p', null, next.lab ? 'Speaker and title still needed' : 'No lab assigned to this date'));
+    }
+    card.appendChild(what);
+
+    if (next.lab && next.type === 'talk') {
+      var btn = SEM.el('button', 'btn' + (next.filled ? ' ghost' : ''), next.filled ? 'Details' : 'Add your details');
+      btn.addEventListener('click', function () { SEM.openSlot(next.date); });
+      card.appendChild(btn);
+    }
+    box.appendChild(card);
+  }
+
+  window.addEventListener('resize', (function () {
+    var was = narrow();
+    return function () { if (narrow() !== was) { was = narrow(); SEM.render(); } };
+  })());
+})();
+</script>
+</body>
+</html>

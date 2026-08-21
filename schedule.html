@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Full season</title>
+<meta name="description" content="Every Friday of the seminar season, with the lab assigned to each date.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/config.js"></script>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap head-inner">
+    <a class="brand" href="index.html"><strong data-bind="seriesName">Seminar Series</strong></a>
+    <nav class="nav">
+      <a href="index.html">Calendar</a>
+      <a href="schedule.html">Full season</a>
+      <a href="archive.html">Past talks</a>
+      <a href="subscribe.html">Subscribe</a>
+    </nav>
+    <div id="session-slot"></div>
+    <button class="menu-btn" aria-label="Menu">&#9776;</button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Full season</h1>
+    <p class="tagline">Every Friday from September to June, and the lab assigned to it.</p>
+    <div class="meta" id="hero-meta"></div>
+  </div>
+</section>
+
+<main class="wrap">
+  <div id="banner-slot"></div>
+
+  <div class="toolbar">
+    <h2 id="count-label">All dates</h2>
+    <div class="seg" id="filter">
+      <button data-f="all" aria-pressed="true">All</button>
+      <button data-f="needs" aria-pressed="false">Needs a speaker</button>
+      <button data-f="mine" aria-pressed="false">My lab</button>
+    </div>
+    <label class="lbl" for="q" style="margin:0">Search</label>
+    <input class="field" id="q" type="search" placeholder="Lab, speaker or title" style="min-width:200px">
+  </div>
+
+  <div class="list" id="rows"><div class="skeleton"></div></div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-inner">
+    <span data-bind="seriesName">Seminar Series</span>
+    <a href="index.html">Calendar</a>
+    <a href="subscribe.html">Add to your calendar</a>
+    <a href="dashboard.html">Organizer</a>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var filter = 'all';
+  var rows = document.getElementById('rows');
+  var q = document.getElementById('q');
+
+  document.getElementById('filter').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    filter = b.dataset.f;
+    SEM.render();
+  });
+  q.addEventListener('input', function () { SEM.render(); });
+
+  SEM.onRender(function (state) {
+    var mine = SEM.session() && SEM.session().lab;
+    SEM.$$('#filter button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.f === filter ? 'true' : 'false');
+      if (b.dataset.f === 'mine') b.hidden = !mine;
+    });
+    if (filter === 'mine' && !mine) filter = 'all';
+
+    var term = q.value.trim().toLowerCase();
+    var list = state.slots.filter(function (s) {
+      if (filter === 'needs' && (s.filled || s.type !== 'talk')) return false;
+      if (filter === 'mine' && s.lab !== mine) return false;
+      if (term) {
+        var hay = [s.lab, s.speaker, s.title, s.note].join(' ').toLowerCase();
+        if (hay.indexOf(term) < 0) return false;
+      }
+      return true;
+    });
+
+    var n = list.filter(function (s) { return s.type !== 'break'; }).length;
+    document.getElementById('count-label').textContent =
+      n + (n === 1 ? ' date' : ' dates') +
+      (filter === 'needs' ? ' still need a speaker' : filter === 'mine' ? ' for ' + mine : '');
+
+    SEM.renderList(rows, list, {
+      mineFirst: true,
+      emptyTitle: term ? 'Nothing matched' : 'Nothing to show',
+      emptyBody: term ? 'Try a different search term.' : 'Every date in this view is accounted for.'
+    });
+  });
+})();
+</script>
+</body>
+</html>

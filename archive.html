@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Past talks</title>
+<meta name="description" content="A searchable record of every talk given in the seminar series.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/config.js"></script>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap head-inner">
+    <a class="brand" href="index.html"><strong data-bind="seriesName">Seminar Series</strong></a>
+    <nav class="nav">
+      <a href="index.html">Calendar</a>
+      <a href="schedule.html">Full season</a>
+      <a href="archive.html">Past talks</a>
+      <a href="subscribe.html">Subscribe</a>
+    </nav>
+    <div id="session-slot"></div>
+    <button class="menu-btn" aria-label="Menu">&#9776;</button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Past talks</h1>
+    <p class="tagline">Everything presented so far, most recent first.</p>
+  </div>
+</section>
+
+<main class="wrap">
+  <div id="banner-slot"></div>
+
+  <div class="toolbar">
+    <h2 id="count-label">Archive</h2>
+    <label class="lbl" for="q" style="margin:0">Search</label>
+    <input class="field" id="q" type="search" placeholder="Speaker, lab or title" style="min-width:220px">
+  </div>
+
+  <div class="list" id="rows"><div class="skeleton"></div></div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-inner">
+    <span data-bind="seriesName">Seminar Series</span>
+    <a href="index.html">Calendar</a>
+    <a href="subscribe.html">Add to your calendar</a>
+    <a href="dashboard.html">Organizer</a>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var rows = document.getElementById('rows');
+  var q = document.getElementById('q');
+  q.addEventListener('input', function () { SEM.render(); });
+
+  SEM.onRender(function (state) {
+    var t = SEM.todayKey();
+    var term = q.value.trim().toLowerCase();
+    var list = state.slots.filter(function (s) {
+      if (s.date >= t || s.type === 'break') return false;
+      if (!s.filled && !s.lab) return false;
+      if (term) {
+        var hay = [s.lab, s.speaker, s.title, s.note].join(' ').toLowerCase();
+        if (hay.indexOf(term) < 0) return false;
+      }
+      return true;
+    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+
+    var given = list.filter(function (s) { return s.filled; }).length;
+    document.getElementById('count-label').textContent =
+      given + (given === 1 ? ' talk' : ' talks') + (term ? ' matching' : ' so far');
+
+    SEM.renderList(rows, list, {
+      group: false,
+      emptyTitle: term ? 'Nothing matched' : 'No talks yet',
+      emptyBody: term ? 'Try a different search term.' : 'Talks appear here the day after they are given.'
+    });
+  });
+})();
+</script>
+</body>
+</html>

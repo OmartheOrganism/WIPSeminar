@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Organizer</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/config.js"></script>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap head-inner">
+    <a class="brand" href="index.html"><strong data-bind="seriesName">Seminar Series</strong></a>
+    <nav class="nav">
+      <a href="index.html">Calendar</a>
+      <a href="schedule.html">Full season</a>
+      <a href="archive.html">Past talks</a>
+      <a href="subscribe.html">Subscribe</a>
+    </nav>
+    <div id="session-slot"></div>
+    <button class="menu-btn" aria-label="Menu">&#9776;</button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Organizer view</h1>
+    <p class="tagline">Who is confirmed, who is still missing, and every lab access code.</p>
+  </div>
+</section>
+
+<main class="wrap">
+  <div id="banner-slot"></div>
+  <div id="gate"></div>
+  <div id="panel" hidden>
+    <div class="stats" id="stats"></div>
+
+    <div class="toolbar">
+      <h2>Dates</h2>
+      <div class="seg" id="scope">
+        <button data-s="upcoming" aria-pressed="true">Upcoming</button>
+        <button data-s="all" aria-pressed="false">Whole season</button>
+        <button data-s="missing" aria-pressed="false">Still missing</button>
+      </div>
+      <button class="btn ghost" id="chase">Email everyone missing</button>
+    </div>
+
+    <div class="tbl-wrap">
+      <table class="data" id="tbl">
+        <thead><tr>
+          <th>Date</th><th>Lab</th><th>Speaker</th><th>Email</th><th>Title</th><th>Status</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="toolbar"><h2>Lab access codes</h2></div>
+    <div class="tbl-wrap">
+      <table class="data" id="labs">
+        <thead><tr><th>Lab</th><th>Contact</th><th>Emails</th><th>Code</th><th>Dates</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:12px">Codes live on the <strong>Labs</strong> tab of your sheet. Change one there and it takes effect immediately.</p>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-inner">
+    <span data-bind="seriesName">Seminar Series</span>
+    <a href="index.html">Calendar</a>
+    <a href="schedule.html">Full season</a>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  var data = null;
+  var scope = 'upcoming';
+  var gate = document.getElementById('gate');
+  var panel = document.getElementById('panel');
+
+  document.getElementById('scope').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    scope = b.dataset.s;
+    paint();
+  });
+
+  document.getElementById('chase').addEventListener('click', function () {
+    if (!data) return;
+    var t = SEM.todayKey();
+    var byLab = {};
+    (data.labDetail || []).forEach(function (l) { byLab[l.name] = l; });
+    var addrs = {};
+    data.slots.forEach(function (s) {
+      if (s.date < t || s.type !== 'talk' || s.filled || !s.lab) return;
+      var l = byLab[s.lab];
+      if (l) l.emails.forEach(function (e) { addrs[e] = true; });
+    });
+    var list = Object.keys(addrs);
+    if (!list.length) { alert('Every upcoming date already has a speaker.'); return; }
+    location.href = 'mailto:?bcc=' + encodeURIComponent(list.join(',')) +
+      '&subject=' + encodeURIComponent((data.settings.seriesName || 'Seminar series') + ': we still need your presenter');
+  });
+
+  function askCode(message) {
+    panel.hidden = true;
+    gate.innerHTML = '';
+    var card = SEM.el('div', 'next-up');
+    card.style.gridTemplateColumns = '1fr';
+    var f = document.createElement('form');
+    if (message) f.appendChild(SEM.note('err', message));
+    f.appendChild(SEM.field('Organizer code', 'code', 'password', '',
+      'Shown in your sheet under Seminar → Show organizer code.', 'off'));
+    var acts = SEM.el('div', 'actions');
+    var go = SEM.el('button', 'btn', 'Open dashboard');
+    go.type = 'submit';
+    acts.appendChild(go);
+    f.appendChild(acts);
+    card.appendChild(f);
+    gate.appendChild(card);
+
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var code = f.code.value.trim();
+      if (!code) return;
+      go.disabled = true; go.textContent = 'Checking…';
+      SEM.api.post({ action: 'admin', code: code }).then(function (r) {
+        go.disabled = false; go.textContent = 'Open dashboard';
+        if (!r || !r.ok) { askCode((r && r.error) || 'That code was not recognised.'); return; }
+        try { sessionStorage.setItem('seminar.admin', code); } catch (err) {}
+        SEM.saveSession({ lab: 'Organizer', code: code, admin: true });
+        data = r;
+        gate.innerHTML = '';
+        panel.hidden = false;
+        paint();
+      }).catch(function (err) {
+        go.disabled = false; go.textContent = 'Open dashboard';
+        askCode(SEM.friendly(err));
+      });
+    });
+    setTimeout(function () { var n = f.querySelector('input'); if (n) n.focus(); }, 40);
+  }
+
+  function paint() {
+    if (!data) return;
+    SEM.$$('#scope button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.s === scope ? 'true' : 'false');
+    });
+
+    var t = SEM.todayKey();
+    var season = data.slots.filter(function (s) { return s.type === 'talk'; });
+    var future = season.filter(function (s) { return s.date >= t; });
+    var confirmed = future.filter(function (s) { return s.filled; }).length;
+    var awaiting = future.filter(function (s) { return s.lab && !s.filled; }).length;
+    var unassigned = future.filter(function (s) { return !s.lab; }).length;
+
+    var stats = document.getElementById('stats');
+    stats.innerHTML = '';
+    [[future.length, 'Dates remaining', ''], [confirmed, 'Confirmed', 'ok'],
+     [awaiting, 'Awaiting a speaker', awaiting ? 'warn' : ''],
+     [unassigned, 'No lab assigned', unassigned ? 'warn' : '']].forEach(function (row) {
+      var d = SEM.el('div', 'stat ' + row[2]);
+      d.appendChild(SEM.el('div', 'v', String(row[0])));
+      d.appendChild(SEM.el('div', 'k', row[1]));
+      stats.appendChild(d);
+    });
+
+    var rows = data.slots.filter(function (s) {
+      if (scope === 'upcoming') return s.date >= t;
+      if (scope === 'missing') return s.date >= t && s.type === 'talk' && !s.filled;
+      return true;
+    });
+
+    var tb = document.querySelector('#tbl tbody');
+    tb.innerHTML = '';
+    if (!rows.length) {
+      var tr0 = document.createElement('tr');
+      var td0 = document.createElement('td');
+      td0.colSpan = 6;
+      td0.className = 'muted';
+      td0.textContent = 'Nothing to show.';
+      tr0.appendChild(td0);
+      tb.appendChild(tr0);
+    }
+    rows.forEach(function (s) {
+      var tr = document.createElement('tr');
+      var st = SEM.statusOf(s);
+      tr.innerHTML =
+        '<td class="nowrap">' + SEM.esc(SEM.shortDate(s.date)) + ' <span class="muted">' + s.date.slice(0, 4) + '</span></td>' +
+        '<td class="nowrap">' + (s.lab ? SEM.esc(s.lab) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="nowrap">' + (s.speaker ? SEM.esc(s.speaker) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="nowrap">' + (s.email ? '<a href="mailto:' + SEM.esc(s.email) + '">' + SEM.esc(s.email) + '</a>' : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (s.title ? SEM.esc(s.title) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="nowrap"><span class="pill ' + (st === 'special' ? 'open' : st) + '">' + SEM.esc(SEM.labels[st] || '') + '</span></td>';
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', function (e) {
+        if (e.target.tagName === 'A') return;
+        SEM.openSlot(s.date);
+      });
+      tb.appendChild(tr);
+    });
+
+    var counts = {};
+    data.slots.forEach(function (s) { if (s.lab) counts[s.lab] = (counts[s.lab] || 0) + 1; });
+    var lb = document.querySelector('#labs tbody');
+    lb.innerHTML = '';
+    (data.labDetail || []).forEach(function (l) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="nowrap">' + SEM.esc(l.name) + '</td>' +
+        '<td class="nowrap">' + (l.contactName ? SEM.esc(l.contactName) : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (l.emails.length ? l.emails.map(function (e) {
+          return '<a href="mailto:' + SEM.esc(e) + '">' + SEM.esc(e) + '</a>';
+        }).join(', ') : '<span class="muted">none set</span>') + '</td>' +
+        '<td class="nowrap"><code>' + SEM.esc(l.passcode || '—') + '</code></td>' +
+        '<td class="nowrap">' + (counts[l.name] || 0) + '</td>';
+      lb.appendChild(tr);
+    });
+  }
+
+  SEM.onRender(function (state) {
+    if (data) return;
+    if (state.demo) {
+      gate.innerHTML = '';
+      gate.appendChild(SEM.note('info',
+        'Sample data. Once the site is connected this page asks for your organizer code first.'));
+      data = {
+        settings: state.settings,
+        slots: state.slots.map(function (s, i) {
+          var c = {}; for (var k in s) c[k] = s[k];
+          if (s.filled) c.email = s.speaker.toLowerCase().replace(/[^a-z]+/g, '.') + '@example.edu';
+          return c;
+        }),
+        labDetail: state.labs.map(function (n, i) {
+          return {
+            name: n, contactName: 'Prof. ' + n.replace(' Lab', ''),
+            emails: [n.toLowerCase().replace(/[^a-z]+/g, '') + '@example.edu'],
+            passcode: ['amber-4821', 'cedar-9130', 'fjord-2264', 'quartz-7715', 'willow-3308', 'onyx-5642'][i % 6]
+          };
+        })
+      };
+      panel.hidden = false;
+      paint();
+      return;
+    }
+    var saved = '';
+    try { saved = sessionStorage.getItem('seminar.admin') || ''; } catch (e) {}
+    if (saved) {
+      SEM.api.post({ action: 'admin', code: saved }).then(function (r) {
+        if (r && r.ok) { data = r; panel.hidden = false; paint(); }
+        else askCode();
+      }).catch(function () { askCode(); });
+    } else {
+      askCode();
+    }
+  });
+})();
+</script>
+</body>
+</html>
