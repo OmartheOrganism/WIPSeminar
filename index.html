@@ -51,8 +51,9 @@
   <div id="view-host"><div class="skeleton"></div></div>
 
   <div class="legend">
-    <span><i style="background:var(--ok)"></i> Speaker confirmed</span>
-    <span><i style="background:var(--warn)"></i> Awaiting a speaker</span>
+    <span><i style="background:var(--ok)"></i> Both speakers confirmed</span>
+    <span><i style="background:var(--accent)"></i> One of two confirmed</span>
+    <span><i style="background:var(--warn)"></i> Awaiting speakers</span>
     <span><i style="background:var(--open)"></i> Not yet allocated</span>
   </div>
 </main>
@@ -130,19 +131,26 @@
 
     var what = SEM.el('div', 'what');
     what.appendChild(SEM.el('div', 'eyebrow', next.date === SEM.todayKey() ? 'Today' : 'Next up'));
-    if (next.filled) {
-      what.appendChild(SEM.el('h2', null, next.title));
-      what.appendChild(SEM.el('p', null, next.speaker + ' · ' + next.lab));
-    } else if (next.type === 'special') {
+    if (next.type === 'special') {
       what.appendChild(SEM.el('h2', null, next.note || 'Special session'));
     } else {
-      what.appendChild(SEM.el('h2', null, next.lab || 'Not yet allocated'));
-      what.appendChild(SEM.el('p', null, next.lab ? 'Speaker and title still needed' : 'No lab assigned to this date'));
+      SEM.talksOf(next).forEach(function (t) {
+        var block = SEM.el('div', 'talk');
+        if (t.filled) {
+          block.appendChild(SEM.el('h2', null, t.title));
+          block.appendChild(SEM.el('p', null, t.speaker + ' · ' + t.lab));
+        } else {
+          block.appendChild(SEM.el('h2', null, t.lab || 'Not yet allocated'));
+          block.appendChild(SEM.el('p', null, t.lab ? 'Speaker and title still needed' : 'No lab assigned to this slot'));
+        }
+        what.appendChild(block);
+      });
     }
     card.appendChild(what);
 
-    if (next.lab && next.type === 'talk') {
-      var btn = SEM.el('button', 'btn' + (next.filled ? ' ghost' : ''), next.filled ? 'Details' : 'Add your details');
+    var allFilled = SEM.filledTalks(next).length === SEM.talksOf(next).length;
+    if (SEM.assignedTalks(next).length && next.type === 'talk') {
+      var btn = SEM.el('button', 'btn' + (allFilled ? ' ghost' : ''), allFilled ? 'Details' : 'Add your details');
       btn.addEventListener('click', function () { SEM.openSlot(next.date); });
       card.appendChild(btn);
     }

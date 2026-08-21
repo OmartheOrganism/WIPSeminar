@@ -67,15 +67,16 @@
     var term = q.value.trim().toLowerCase();
     var list = state.slots.filter(function (s) {
       if (s.date >= t || s.type === 'break') return false;
-      if (!s.filled && !s.lab) return false;
+      if (!SEM.filledTalks(s).length && !SEM.assignedTalks(s).length) return false;
       if (term) {
-        var hay = [s.lab, s.speaker, s.title, s.note].join(' ').toLowerCase();
-        if (hay.indexOf(term) < 0) return false;
+        var hay = [s.note];
+        SEM.talksOf(s).forEach(function (x) { hay.push(x.lab, x.speaker, x.title); });
+        if (hay.join(' ').toLowerCase().indexOf(term) < 0) return false;
       }
       return true;
     }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
 
-    var given = list.filter(function (s) { return s.filled; }).length;
+    var given = list.reduce(function (n, s) { return n + SEM.filledTalks(s).length; }, 0);
     document.getElementById('count-label').textContent =
       given + (given === 1 ? ' talk' : ' talks') + (term ? ' matching' : ' so far');
 

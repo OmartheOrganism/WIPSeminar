@@ -1,5 +1,5 @@
 window.SEMINAR_CONFIG = {
-  apiUrl: "https://script.google.com/macros/s/AKfycbwI59KFbUaXMbVQNSybGSBSw0o-LXR40nv2ay7JO60ei4xQTxrmR9ovZIitDCmwOs0vzQ/exec",
+  apiUrl: "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE",
 
   seriesName: "Departmental Seminar Series",
   tagline: "Weekly research talks, September to June",

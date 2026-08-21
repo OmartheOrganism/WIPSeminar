@@ -30,7 +30,7 @@
 <section class="hero">
   <div class="wrap">
     <h1>Organizer view</h1>
-    <p class="tagline">Who is confirmed, who is still missing, and every lab access code.</p>
+    <p class="tagline">Both presenter slots on every date — who is confirmed, who is still missing, and every lab access code.</p>
   </div>
 </section>
 
@@ -53,7 +53,7 @@
     <div class="tbl-wrap">
       <table class="data" id="tbl">
         <thead><tr>
-          <th>Date</th><th>Lab</th><th>Speaker</th><th>Email</th><th>Title</th><th>Status</th>
+          <th>Date</th><th>Slot</th><th>Lab</th><th>Speaker</th><th>Email</th><th>Title</th><th>Status</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -62,7 +62,7 @@
     <div class="toolbar"><h2>Lab access codes</h2></div>
     <div class="tbl-wrap">
       <table class="data" id="labs">
-        <thead><tr><th>Lab</th><th>Contact</th><th>Emails</th><th>Code</th><th>Dates</th></tr></thead>
+        <thead><tr><th>Lab</th><th>Contact</th><th>Emails</th><th>Code</th><th>Slots</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -100,9 +100,12 @@
     (data.labDetail || []).forEach(function (l) { byLab[l.name] = l; });
     var addrs = {};
     data.slots.forEach(function (s) {
-      if (s.date < t || s.type !== 'talk' || s.filled || !s.lab) return;
-      var l = byLab[s.lab];
-      if (l) l.emails.forEach(function (e) { addrs[e] = true; });
+      if (s.date < t || s.type !== 'talk') return;
+      SEM.talksOf(s).forEach(function (talk) {
+        if (talk.filled || !talk.lab) return;
+        var l = byLab[talk.lab];
+        if (l) l.emails.forEach(function (e) { addrs[e] = true; });
+      });
     });
     var list = Object.keys(addrs);
     if (!list.length) { alert('Every upcoming date already has a speaker.'); return; }
@@ -158,13 +161,19 @@
     var t = SEM.todayKey();
     var season = data.slots.filter(function (s) { return s.type === 'talk'; });
     var future = season.filter(function (s) { return s.date >= t; });
-    var confirmed = future.filter(function (s) { return s.filled; }).length;
-    var awaiting = future.filter(function (s) { return s.lab && !s.filled; }).length;
-    var unassigned = future.filter(function (s) { return !s.lab; }).length;
+    /* Counted per presenter slot — two on every remaining date. */
+    var confirmed = 0, awaiting = 0, unassigned = 0;
+    future.forEach(function (s) {
+      SEM.talksOf(s).forEach(function (talk) {
+        if (talk.filled) confirmed++;
+        else if (talk.lab) awaiting++;
+        else unassigned++;
+      });
+    });
 
     var stats = document.getElementById('stats');
     stats.innerHTML = '';
-    [[future.length, 'Dates remaining', ''], [confirmed, 'Confirmed', 'ok'],
+    [[future.length, 'Dates remaining', ''], [confirmed, 'Speakers confirmed', 'ok'],
      [awaiting, 'Awaiting a speaker', awaiting ? 'warn' : ''],
      [unassigned, 'No lab assigned', unassigned ? 'warn' : '']].forEach(function (row) {
       var d = SEM.el('div', 'stat ' + row[2]);
@@ -173,9 +182,15 @@
       stats.appendChild(d);
     });
 
-    var rows = data.slots.filter(function (s) {
-      if (scope === 'upcoming') return s.date >= t;
-      if (scope === 'missing') return s.date >= t && s.type === 'talk' && !s.filled;
+    /* One entry per presenter slot; non-talk dates stay a single entry. */
+    var rows = [];
+    data.slots.forEach(function (s) {
+      if (s.type !== 'talk') { rows.push({ day: s, talk: null }); return; }
+      SEM.talksOf(s).forEach(function (talk) { rows.push({ day: s, talk: talk }); });
+    });
+    rows = rows.filter(function (r) {
+      if (scope === 'upcoming') return r.day.date >= t;
+      if (scope === 'missing') return r.day.date >= t && r.day.type === 'talk' && !r.talk.filled;
       return true;
     });
 
@@ -184,22 +199,26 @@
     if (!rows.length) {
       var tr0 = document.createElement('tr');
       var td0 = document.createElement('td');
-      td0.colSpan = 6;
+      td0.colSpan = 7;
       td0.className = 'muted';
       td0.textContent = 'Nothing to show.';
       tr0.appendChild(td0);
       tb.appendChild(tr0);
     }
-    rows.forEach(function (s) {
+    rows.forEach(function (r) {
+      var s = r.day;
+      var talk = r.talk;
       var tr = document.createElement('tr');
-      var st = SEM.statusOf(s);
+      var st = talk ? SEM.talkStatus(s, talk) : SEM.statusOf(s);
       tr.innerHTML =
         '<td class="nowrap">' + SEM.esc(SEM.shortDate(s.date)) + ' <span class="muted">' + s.date.slice(0, 4) + '</span></td>' +
-        '<td class="nowrap">' + (s.lab ? SEM.esc(s.lab) : '<span class="muted">—</span>') + '</td>' +
-        '<td class="nowrap">' + (s.speaker ? SEM.esc(s.speaker) : '<span class="muted">—</span>') + '</td>' +
-        '<td class="nowrap">' + (s.email ? '<a href="mailto:' + SEM.esc(s.email) + '">' + SEM.esc(s.email) + '</a>' : '<span class="muted">—</span>') + '</td>' +
-        '<td>' + (s.title ? SEM.esc(s.title) : '<span class="muted">—</span>') + '</td>' +
-        '<td class="nowrap"><span class="pill ' + (st === 'special' ? 'open' : st) + '">' + SEM.esc(SEM.labels[st] || '') + '</span></td>';
+        '<td class="nowrap">' + (talk ? talk.n : '<span class="muted">—</span>') + '</td>' +
+        '<td class="nowrap">' + (talk && talk.lab ? SEM.esc(talk.lab) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="nowrap">' + (talk && talk.speaker ? SEM.esc(talk.speaker) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="nowrap">' + (talk && talk.email ? '<a href="mailto:' + SEM.esc(talk.email) + '">' + SEM.esc(talk.email) + '</a>' : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (talk && talk.title ? SEM.esc(talk.title) : (!talk && s.note ? SEM.esc(s.note) : '<span class="muted">—</span>')) + '</td>' +
+        '<td class="nowrap"><span class="pill ' + (st === 'special' ? 'open' : st) + '">' +
+          SEM.esc((talk ? SEM.talkLabels[st] : SEM.labels[st]) || '') + '</span></td>';
       tr.style.cursor = 'pointer';
       tr.addEventListener('click', function (e) {
         if (e.target.tagName === 'A') return;
@@ -209,7 +228,9 @@
     });
 
     var counts = {};
-    data.slots.forEach(function (s) { if (s.lab) counts[s.lab] = (counts[s.lab] || 0) + 1; });
+    data.slots.forEach(function (s) {
+      SEM.labsOf(s).forEach(function (name) { counts[name] = (counts[name] || 0) + 1; });
+    });
     var lb = document.querySelector('#labs tbody');
     lb.innerHTML = '';
     (data.labDetail || []).forEach(function (l) {
@@ -234,9 +255,13 @@
         'Sample data. Once the site is connected this page asks for your organizer code first.'));
       data = {
         settings: state.settings,
-        slots: state.slots.map(function (s, i) {
+        slots: state.slots.map(function (s) {
           var c = {}; for (var k in s) c[k] = s[k];
-          if (s.filled) c.email = s.speaker.toLowerCase().replace(/[^a-z]+/g, '.') + '@example.edu';
+          c.talks = SEM.talksOf(s).map(function (t) {
+            var d = {}; for (var k2 in t) d[k2] = t[k2];
+            if (t.filled) d.email = t.speaker.toLowerCase().replace(/[^a-z]+/g, '.') + '@example.edu';
+            return d;
+          });
           return c;
         }),
         labDetail: state.labs.map(function (n, i) {

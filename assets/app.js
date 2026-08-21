@@ -219,18 +219,53 @@
     }
   }
 
+  /* Each date carries two presenter slots. */
+  function talksOf(s) { return (s && s.talks) || []; }
+  function filledTalks(s) { return talksOf(s).filter(function (t) { return t.filled; }); }
+  function assignedTalks(s) { return talksOf(s).filter(function (t) { return t.lab; }); }
+  function labsOf(s) {
+    return talksOf(s).map(function (t) { return t.lab; }).filter(Boolean);
+  }
+  function hasLab(s, name) {
+    return !!name && labsOf(s).indexOf(name) >= 0;
+  }
+  function ordinal(n) { return n === 1 ? 'First presenter' : 'Second presenter'; }
+
   function statusOf(s) {
     if (s.type === 'break') return 'break';
     if (s.type === 'special') return 'special';
-    if (s.filled) return 'filled';
-    if (!s.lab) return 'open';
+    var all = talksOf(s);
+    var f = filledTalks(s).length;
+    if (all.length && f === all.length) return 'filled';
+    if (f > 0) return 'partial';
+    if (!assignedTalks(s).length) return 'open';
     return 'needs';
   }
 
+  /* Per-presenter status, for views that list the two separately. */
+  function talkStatus(s, t) {
+    if (s.type === 'break') return 'break';
+    if (s.type === 'special') return 'special';
+    if (t.filled) return 'filled';
+    return t.lab ? 'needs' : 'open';
+  }
+
   var LABELS = {
+    filled: 'Confirmed', partial: 'Part confirmed', needs: 'Awaiting speakers',
+    open: 'Unassigned', 'break': 'No seminar', special: 'Special'
+  };
+
+  var TALK_LABELS = {
     filled: 'Confirmed', needs: 'Awaiting speaker', open: 'Unassigned',
     'break': 'No seminar', special: 'Special'
   };
+
+  /* "1 of 2 confirmed" reads better than a fixed label on a part-filled date. */
+  function labelFor(s) {
+    var st = statusOf(s);
+    if (st !== 'partial') return LABELS[st] || '';
+    return filledTalks(s).length + ' of ' + talksOf(s).length + ' confirmed';
+  }
 
   function isPast(k) { return k < todayKey(); }
 
@@ -371,7 +406,7 @@
   function slotChip(s) {
     var st = statusOf(s);
     var b = el('button', 'slot ' + st + (isPast(s.date) ? ' past' : '') +
-      (myLab() && s.lab === myLab() ? ' mine' : ''));
+      (hasLab(s, myLab()) ? ' mine' : ''));
     if (st === 'break') {
       b.appendChild(el('span', 'lab', s.note || 'No seminar'));
       b.disabled = true;
@@ -380,9 +415,14 @@
     if (st === 'special') {
       b.appendChild(el('span', 'lab', s.note || 'Special session'));
     } else {
-      b.appendChild(el('span', 'lab', s.lab || 'Unassigned'));
-      if (s.speaker) b.appendChild(el('span', 'who', s.speaker));
-      b.appendChild(el('span', 'tag', isPast(s.date) && !s.filled ? 'Not recorded' : LABELS[st]));
+      talksOf(s).forEach(function (t) {
+        var line = el('span', 'talk');
+        line.appendChild(el('span', 'lab', t.lab || 'Unassigned'));
+        if (t.speaker) line.appendChild(el('span', 'who', t.speaker));
+        b.appendChild(line);
+      });
+      b.appendChild(el('span', 'tag',
+        isPast(s.date) && !filledTalks(s).length ? 'Not recorded' : labelFor(s)));
     }
     b.addEventListener('click', function () { openSlot(s.date); });
     return b;
@@ -426,26 +466,33 @@
       body.appendChild(el('h3', null, s.note || 'No seminar'));
     } else if (st === 'special') {
       body.appendChild(el('h3', null, s.note || 'Special session'));
-    } else if (s.filled) {
-      body.appendChild(el('h3', null, s.title));
-      body.appendChild(el('p', null, s.speaker + ' · ' + s.lab));
     } else {
-      body.appendChild(el('h3', null, s.lab || 'No lab assigned yet'));
-      var p2 = el('p', 'untitled', s.lab
-        ? (past ? 'No presenter was recorded' : 'Speaker and title still needed')
-        : 'This Friday has not been allocated');
-      body.appendChild(p2);
+      talksOf(s).forEach(function (t) { body.appendChild(talkBlock(t, past)); });
     }
     row.appendChild(body);
 
     var pill = el('span', 'pill ' + (st === 'special' ? 'open' : st),
-      past && !s.filled && st !== 'break' ? 'Past' : LABELS[st] || '');
+      past && !filledTalks(s).length && st !== 'break' ? 'Past' : labelFor(s));
     row.appendChild(pill);
 
     if (st === 'break') row.disabled = true;
     else row.addEventListener('click', function () { openSlot(s.date); });
-    if (opts && opts.mineFirst && myLab() && s.lab === myLab()) row.classList.add('mine');
+    if (opts && opts.mineFirst && hasLab(s, myLab())) row.classList.add('mine');
     return row;
+  }
+
+  function talkBlock(t, past) {
+    var d = el('div', 'talk');
+    if (t.filled) {
+      d.appendChild(el('h3', null, t.title));
+      d.appendChild(el('p', null, t.speaker + ' · ' + t.lab));
+    } else {
+      d.appendChild(el('h3', null, t.lab || 'No lab assigned yet'));
+      d.appendChild(el('p', 'untitled', t.lab
+        ? (past ? 'No presenter was recorded' : 'Speaker and title still needed')
+        : 'This presenter slot has not been allocated'));
+    }
+    return d;
   }
 
   function emptyBlock(title, body) {
@@ -504,13 +551,16 @@
 
   function note(kind, text) { return el('div', 'note ' + kind, text); }
 
-  function field(label, name, type, value, hint, autoc) {
+  /* idp namespaces the input id, so the two presenter forms on one date can be
+     open together without colliding. */
+  function field(label, name, type, value, hint, autoc, idp) {
+    var id = 'f_' + (idp || '') + name;
     var w = el('div', 'f');
     var l = el('label', 'lbl', label);
-    l.setAttribute('for', 'f_' + name);
+    l.setAttribute('for', id);
     w.appendChild(l);
     var i = el('input', 'inp');
-    i.id = 'f_' + name;
+    i.id = id;
     i.name = name;
     i.type = type || 'text';
     i.value = value || '';
@@ -578,8 +628,9 @@
     if (!s) return;
     var st = statusOf(s);
     var d = parseDate(date);
+    var names = labsOf(s);
     var sub = st === 'special' ? (s.note || 'Special session')
-      : (s.lab ? s.lab : 'No lab assigned yet');
+      : (names.length ? names.join(' & ') : 'No labs assigned yet');
     var body = openModal(DAYS[d.getDay()], d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(), sub);
 
     var where = [];
@@ -597,48 +648,79 @@
       return;
     }
 
-    if (!s.lab) {
-      body.appendChild(el('p', null, 'No lab has been allocated to this Friday yet.'));
+    if (!assignedTalks(s).length) {
+      body.appendChild(el('p', null, 'Neither presenter slot on this Friday has been allocated to a lab yet.'));
       if (state.settings.organizerEmail) {
         var p = el('p', 'hint');
-        p.innerHTML = 'If your lab would like it, email <a href="mailto:' + esc(state.settings.organizerEmail) + '">' +
+        p.innerHTML = 'If your lab would like one, email <a href="mailto:' + esc(state.settings.organizerEmail) + '">' +
           esc(state.settings.organizerName || state.settings.organizerEmail) + '</a>.';
         body.appendChild(p);
       }
       return;
     }
 
-    if (s.filled) {
-      var det = el('div', 'talk-detail');
-      det.appendChild(el('div', 't', s.title));
-      det.appendChild(el('div', 's', s.speaker + ' · ' + s.lab));
-      body.appendChild(det);
-    }
+    var panels = talksOf(s).map(function (t) {
+      var panel = talkPanel(s, t);
+      body.appendChild(panel.node);
+      return panel;
+    });
 
-    var formHost = el('div');
-    body.appendChild(formHost);
+    var foot = el('div', 'actions');
+    var close = el('button', 'btn ghost', 'Close');
+    close.addEventListener('click', closeModal);
+    foot.appendChild(close);
+    body.appendChild(foot);
 
-    if (s.filled) {
-      var acts = el('div', 'actions');
-      var edit = el('button', 'btn ghost', 'Update these details');
-      edit.addEventListener('click', function () {
-        acts.remove();
-        signupForm(formHost, s);
-      });
-      acts.appendChild(edit);
-      var done = el('button', 'btn spacer', 'Close');
-      done.addEventListener('click', closeModal);
-      acts.appendChild(done);
-      body.appendChild(acts);
-    } else {
-      signupForm(formHost, s);
-    }
+    /* If exactly one slot is waiting on the lab you are signed in as, open it. */
+    var mine = panels.filter(function (panel) {
+      return !panel.talk.filled && panel.talk.lab && myLab() && panel.talk.lab === myLab();
+    });
+    if (mine.length === 1) mine[0].expand();
   }
 
-  function signupForm(host, s) {
+  /* One presenter slot inside the day modal: its details, and its own form. */
+  function talkPanel(day, t) {
+    var node = el('div', 'talk-panel');
+    node.appendChild(el('div', 'eyebrow', ordinal(t.n)));
+    var host = el('div');
+    node.appendChild(host);
+
+    function show() {
+      host.innerHTML = '';
+      if (!t.lab) {
+        host.appendChild(el('p', 'hint', 'No lab has been allocated to this presenter slot yet.'));
+        return;
+      }
+      if (t.filled) {
+        var det = el('div', 'talk-detail');
+        det.appendChild(el('div', 't', t.title));
+        det.appendChild(el('div', 's', t.speaker + ' · ' + t.lab));
+        host.appendChild(det);
+      } else {
+        host.appendChild(el('p', 'hint', t.lab + ' — speaker and title still needed.'));
+      }
+      var acts = el('div', 'actions');
+      var go = el('button', 'btn' + (t.filled ? ' ghost' : ''),
+        t.filled ? 'Update these details' : 'Add your details');
+      go.addEventListener('click', expand);
+      acts.appendChild(go);
+      host.appendChild(acts);
+    }
+
+    function expand() {
+      if (!t.lab) return;
+      host.innerHTML = '';
+      signupForm(host, day, t, show);
+    }
+
+    show();
+    return { node: node, talk: t, expand: expand };
+  }
+
+  function signupForm(host, day, t, onCancel) {
     host.innerHTML = '';
     var sess = state.session;
-    var needCode = !(sess && sess.code && (sess.admin || sess.lab === s.lab));
+    var needCode = !(sess && sess.code && (sess.admin || sess.lab === t.lab));
 
     var msg = el('div');
     host.appendChild(msg);
@@ -647,16 +729,17 @@
       host.appendChild(note('good', 'Signed in as ' + (sess.admin ? 'organizer' : sess.lab) + '.'));
     }
 
+    var idp = 's' + t.n + '_';
     var f = document.createElement('form');
     if (needCode) {
       f.appendChild(field('Lab access code', 'passcode', 'text', '',
-        'The code emailed to ' + s.lab + ' by the organizer.', 'off'));
+        'The code emailed to ' + t.lab + ' by the organizer.', 'off', idp));
     }
-    f.appendChild(field('Presenter name', 'speaker', 'text', s.speaker || '', null, 'name'));
-    f.appendChild(field('Email address', 'email', 'email', s.email || '',
-      'Used only for reminders about this talk.', 'email'));
-    f.appendChild(field('Talk title', 'title', 'text', s.title || '',
-      'A working title is fine — you can change it later.', 'off'));
+    f.appendChild(field('Presenter name', 'speaker', 'text', t.speaker || '', null, 'name', idp));
+    f.appendChild(field('Email address', 'email', 'email', t.email || '',
+      'Used only for reminders about this talk.', 'email', idp));
+    f.appendChild(field('Talk title', 'title', 'text', t.title || '',
+      'A working title is fine — you can change it later.', 'off', idp));
 
     var hp = el('input', 'hp');
     hp.name = 'website'; hp.tabIndex = -1; hp.setAttribute('aria-hidden', 'true'); hp.autocomplete = 'off';
@@ -673,17 +756,18 @@
     }
 
     var acts = el('div', 'actions');
-    var go = el('button', 'btn', s.filled ? 'Save changes' : 'Confirm this talk');
+    var label = t.filled ? 'Save changes' : 'Confirm this talk';
+    var go = el('button', 'btn', label);
     go.type = 'submit';
     acts.appendChild(go);
     var cancel = el('button', 'btn ghost', 'Cancel');
     cancel.type = 'button';
-    cancel.addEventListener('click', closeModal);
+    cancel.addEventListener('click', function () { onCancel ? onCancel() : closeModal(); });
     acts.appendChild(cancel);
-    if (s.filled) {
+    if (t.filled) {
       var rm = el('button', 'btn danger spacer', 'Remove');
       rm.type = 'button';
-      rm.addEventListener('click', function () { withdraw(s, msg, go); });
+      rm.addEventListener('click', function () { withdraw(day, t, msg, go); });
       acts.appendChild(rm);
     }
     f.appendChild(acts);
@@ -700,8 +784,9 @@
       var code = needCode ? f.passcode.value.trim() : sess.code;
       var payload = {
         action: 'signup',
-        date: s.date,
-        lab: s.lab,
+        date: day.date,
+        slot: t.n,
+        lab: t.lab,
         passcode: code,
         speaker: f.speaker.value.trim(),
         email: f.email.value.trim(),
@@ -717,24 +802,28 @@
       }
       go.disabled = true; go.textContent = 'Saving…';
       API.post(payload).then(function (r) {
-        go.disabled = false; go.textContent = s.filled ? 'Save changes' : 'Confirm this talk';
+        go.disabled = false; go.textContent = label;
         if (!r || !r.ok) { msg.appendChild(note('err', (r && r.error) || 'Something went wrong.')); return; }
-        if (needCode && f.remember && f.remember.checked) saveSession({ lab: s.lab, code: code, admin: false });
+        if (needCode && f.remember && f.remember.checked) saveSession({ lab: t.lab, code: code, admin: false });
         replaceSlot(r.slot);
         render();
-        confirmed(r.slot, payload.email);
+        confirmed(r.slot, r.talk || talkIn(r.slot, t.n), payload.email);
       }).catch(function (err) {
-        go.disabled = false; go.textContent = s.filled ? 'Save changes' : 'Confirm this talk';
+        go.disabled = false; go.textContent = label;
         msg.appendChild(note('err', friendly(err)));
       });
     });
   }
 
-  function withdraw(s, msg, go) {
-    if (!confirm('Remove ' + s.speaker + ' from ' + longDate(s.date) + '?')) return;
+  function talkIn(day, n) {
+    return talksOf(day).filter(function (t) { return t.n === n; })[0] || { n: n, lab: '', speaker: '', title: '' };
+  }
+
+  function withdraw(day, t, msg, go) {
+    if (!confirm('Remove ' + t.speaker + ' from ' + longDate(day.date) + '?')) return;
     var code = state.session && state.session.code;
     go.disabled = true;
-    API.post({ action: 'withdraw', date: s.date, passcode: code }).then(function (r) {
+    API.post({ action: 'withdraw', date: day.date, slot: t.n, passcode: code }).then(function (r) {
       go.disabled = false;
       if (!r || !r.ok) { msg.appendChild(note('err', (r && r.error) || 'Could not remove that entry.')); return; }
       replaceSlot(r.slot);
@@ -746,12 +835,18 @@
     });
   }
 
-  function confirmed(slot, email) {
-    var body = openModal('Confirmed', 'You are on the schedule', longDate(slot.date));
+  function confirmed(day, talk, email) {
+    var body = openModal('Confirmed', 'You are on the schedule', longDate(day.date));
     var det = el('div', 'talk-detail');
-    det.appendChild(el('div', 't', slot.title));
-    det.appendChild(el('div', 's', slot.speaker + ' · ' + slot.lab));
+    det.appendChild(el('div', 't', talk.title));
+    det.appendChild(el('div', 's', talk.speaker + ' · ' + talk.lab + ' · ' + ordinal(talk.n).toLowerCase()));
     body.appendChild(det);
+    var other = talkIn(day, talk.n === 1 ? 2 : 1);
+    if (other.lab) {
+      body.appendChild(el('p', 'hint', other.filled
+        ? 'The other talk that day is ' + other.speaker + ' (' + other.lab + ').'
+        : 'The other talk that day is from ' + other.lab + ', still to be confirmed.'));
+    }
     body.appendChild(el('p', null, 'A confirmation has gone to ' + email +
       ', and a reminder will follow a few days before your talk.'));
     var acts = el('div', 'actions');
@@ -773,8 +868,19 @@
     lines.push('X-WR-CALNAME:' + name);
     state.slots.forEach(function (s) {
       if (s.type === 'break') return;
-      var summary = s.filled ? s.speaker + (s.lab ? ' (' + s.lab + ')' : '')
-        : (s.type === 'special' ? (s.note || name) : (s.lab || 'Speaker TBA') + ' — title TBA');
+      /* One event per date, covering both presenters. */
+      var heads = [], desc = [];
+      talksOf(s).forEach(function (t) {
+        if (t.filled) {
+          heads.push(t.speaker + (t.lab ? ' (' + t.lab + ')' : ''));
+          desc.push(t.speaker + (t.lab ? ' (' + t.lab + ')' : '') + ': ' + t.title);
+        } else if (t.lab) {
+          heads.push(t.lab + ' — title TBA');
+          desc.push(t.lab + ': speaker and title still to be confirmed');
+        }
+      });
+      var summary = s.type === 'special' ? (s.note || name)
+        : (heads.length ? heads.join(' & ') : 'Speakers TBA');
       var dk = s.date.replace(/-/g, '');
       lines.push('BEGIN:VEVENT');
       lines.push('UID:' + s.date + '@seminar-series');
@@ -782,7 +888,9 @@
       lines.push('DTSTART;VALUE=DATE:' + dk);
       lines.push('DTEND;VALUE=DATE:' + nextDayKey(s.date).replace(/-/g, ''));
       lines.push('SUMMARY:' + summary.replace(/,/g, '\\,'));
-      if (s.title) lines.push('DESCRIPTION:' + s.title.replace(/,/g, '\\,'));
+      if (s.type !== 'special' && desc.length) {
+        lines.push('DESCRIPTION:' + desc.join('\\n').replace(/,/g, '\\,'));
+      }
       if (state.settings.location) lines.push('LOCATION:' + state.settings.location.replace(/,/g, '\\,'));
       lines.push('END:VEVENT');
     });
@@ -818,7 +926,8 @@
       'Mapping RNA velocity across regenerating zebrafish fin',
       'Do gut microbiota shape social preference in voles?'
     ];
-    var speakers = ['Aditi Raman', 'Tomás Iglesias', 'Nour El-Amin', 'Wren Halliday'];
+    var speakers = ['Aditi Raman', 'Tomás Iglesias', 'Nour El-Amin', 'Wren Halliday',
+      'Petra Lindqvist', 'Kofi Mensah'];
     var now = new Date();
     var year = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
     var d = new Date(year, 8, 1);
@@ -827,15 +936,22 @@
     var slots = [], i = 0;
     while (d <= end) {
       var key = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-      var slot = { date: key, lab: labNames[i % labNames.length], type: 'talk', note: '', speaker: '', title: '', filled: false };
-      if (d.getMonth() === 11 && d.getDate() > 18) { slot.type = 'break'; slot.lab = ''; slot.note = 'Winter break'; }
-      else if (i % 9 === 4) { slot.lab = ''; }
-      else if (key < todayKey() || i % 3 !== 2) {
-        slot.speaker = speakers[i % speakers.length];
-        slot.title = titles[i % titles.length];
-        slot.filled = true;
-      }
-      slots.push(slot);
+      var day = { date: key, type: 'talk', note: '', talks: [] };
+      var winter = d.getMonth() === 11 && d.getDate() > 18;
+      if (winter) { day.type = 'break'; day.note = 'Winter break'; }
+      [1, 2].forEach(function (n) {
+        var k = i * 2 + n - 1;
+        var talk = { n: n, lab: labNames[k % labNames.length], speaker: '', title: '', filled: false };
+        if (winter) talk.lab = '';
+        else if (k % 11 === 4) talk.lab = '';
+        else if (key < todayKey() || k % 5 !== 2) {
+          talk.speaker = speakers[k % speakers.length];
+          talk.title = titles[k % titles.length];
+          talk.filled = true;
+        }
+        day.talks.push(talk);
+      });
+      slots.push(day);
       d.setDate(d.getDate() + 7);
       i++;
     }
@@ -861,6 +977,9 @@
     renderCalendar: renderCalendar, renderMonthNav: renderMonthNav, renderList: renderList,
     openSlot: openSlot, openUnlock: openUnlock, openModal: openModal, closeModal: closeModal,
     statusOf: statusOf, labels: LABELS, isPast: isPast, upcoming: upcoming,
+    talksOf: talksOf, filledTalks: filledTalks, assignedTalks: assignedTalks, labsOf: labsOf,
+    hasLab: hasLab, talkStatus: talkStatus, talkLabels: TALK_LABELS, labelFor: labelFor,
+    ordinal: ordinal,
     longDate: longDate, shortDate: shortDate, monthLabel: monthLabel, parseDate: parseDate,
     todayKey: todayKey, monthKey: monthKey, esc: esc, el: el, $: $, $$: $$, note: note,
     field: field, icsUrl: icsUrl, downloadIcs: downloadIcs, api: API, configured: configured,

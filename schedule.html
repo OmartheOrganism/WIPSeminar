@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Full season</title>
-<meta name="description" content="Every Friday of the seminar season, with the lab assigned to each date.">
+<meta name="description" content="Every Friday of the seminar season, with the two labs assigned to each date.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
@@ -30,7 +30,7 @@
 <section class="hero">
   <div class="wrap">
     <h1>Full season</h1>
-    <p class="tagline">Every Friday from September to June, and the lab assigned to it.</p>
+    <p class="tagline">Every Friday from September to June, and the two labs assigned to it.</p>
     <div class="meta" id="hero-meta"></div>
   </div>
 </section>
@@ -86,11 +86,12 @@
 
     var term = q.value.trim().toLowerCase();
     var list = state.slots.filter(function (s) {
-      if (filter === 'needs' && (s.filled || s.type !== 'talk')) return false;
-      if (filter === 'mine' && s.lab !== mine) return false;
+      if (filter === 'needs' && (SEM.statusOf(s) === 'filled' || s.type !== 'talk')) return false;
+      if (filter === 'mine' && !SEM.hasLab(s, mine)) return false;
       if (term) {
-        var hay = [s.lab, s.speaker, s.title, s.note].join(' ').toLowerCase();
-        if (hay.indexOf(term) < 0) return false;
+        var hay = [s.note];
+        SEM.talksOf(s).forEach(function (t) { hay.push(t.lab, t.speaker, t.title); });
+        if (hay.join(' ').toLowerCase().indexOf(term) < 0) return false;
       }
       return true;
     });
@@ -98,7 +99,8 @@
     var n = list.filter(function (s) { return s.type !== 'break'; }).length;
     document.getElementById('count-label').textContent =
       n + (n === 1 ? ' date' : ' dates') +
-      (filter === 'needs' ? ' still need a speaker' : filter === 'mine' ? ' for ' + mine : '');
+      (filter === 'needs' ? (n === 1 ? ' still needs a speaker' : ' still need a speaker')
+        : filter === 'mine' ? ' for ' + mine : '');
 
     SEM.renderList(rows, list, {
       mineFirst: true,
