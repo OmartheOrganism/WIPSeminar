@@ -6,7 +6,6 @@ const TAB_LOG = 'Log';
 
 const REMINDER_DAYS = [28, 14, 3];
 
-/* Each date carries this many presenter slots, numbered from 1. */
 const SLOTS = [1, 2];
 const SLOT_LABELS = ['first', 'second'];
 
@@ -25,8 +24,6 @@ const DEFAULT_SETTINGS = [
   ['remindersEnabled', 'yes'],
   ['copyOrganizer', 'yes']
 ];
-
-/* ---------- entry points ---------- */
 
 function doGet(e) {
   const p = (e && e.parameter) || {};
@@ -96,8 +93,6 @@ function frameReply(obj) {
   ).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/* ---------- sheet access ---------- */
-
 function book() { return SpreadsheetApp.getActive(); }
 
 function tab(name) {
@@ -126,8 +121,6 @@ function table(name) {
 
 function colIndex(t, k) { return t.keys.indexOf(k) + 1; }
 
-/* Build a row in the sheet's own column order, so a migrated sheet whose new
-   columns were appended at the end is written correctly. */
 function rowValues(t, obj) {
   return t.keys.map(function (k) {
     return Object.prototype.hasOwnProperty.call(obj, k) ? obj[k] : '';
@@ -157,22 +150,25 @@ function norm(v) { return String(v == null ? '' : v).replace(/\s+/g, '').toLower
 function isEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim()); }
 function fail(msg) { return { ok: false, error: msg }; }
 
-/* Presenter slot number. Anything unrecognised — including the blank cells on
-   rows written before there were two presenters — is slot 1. */
 function slotNum(v) {
   const n = Math.round(Number(v));
   return SLOTS.indexOf(n) >= 0 ? n : SLOTS[0];
 }
 function slotKey(date, n) { return date + '|' + slotNum(n); }
 
-/* ---------- data ---------- */
+function normTime(v) {
+  if (v instanceof Date && !isNaN(v)) return pad(v.getHours()) + ':' + pad(v.getMinutes());
+  return String(v == null ? '' : v).trim();
+}
 
 function settings() {
   const t = table(TAB_SETTINGS);
   const o = {};
   t.rows.forEach(function (r) {
     const k = String(r.setting == null ? '' : r.setting).trim();
-    if (k) o[k] = String(r.value == null ? '' : r.value).trim();
+    if (k) o[k] = (k === 'startTime' || k === 'endTime')
+      ? normTime(r.value)
+      : String(r.value == null ? '' : r.value).trim();
   });
   return o;
 }
@@ -200,7 +196,6 @@ function scheduleRows() {
     return {
       _row: r._row,
       date: normDate(r.date),
-      /* "Lab" is the pre-two-presenter header; it reads as the first slot. */
       labs: [text(r.lab1 != null && r.lab1 !== '' ? r.lab1 : r.lab, 120), text(r.lab2, 120)],
       type: ['talk', 'break', 'special'].indexOf(type) >= 0 ? type : 'talk',
       note: text(r.note, 300)
@@ -232,7 +227,6 @@ function signupMap() {
   return m;
 }
 
-/* One date, carrying every presenter slot on it. */
 function dayView(row, signups, includeEmail) {
   const day = { date: row.date, type: row.type, note: row.note, talks: [] };
   SLOTS.forEach(function (n) {
@@ -288,8 +282,6 @@ function adminPayload(code) {
   return base;
 }
 
-/* ---------- authorisation ---------- */
-
 function authorize(code, labName) {
   const st = settings();
   const given = norm(code);
@@ -315,8 +307,6 @@ function unlock(b) {
     }).map(function (r) { return r.date; });
   return { ok: true, lab: auth.lab, admin: auth.admin, dates: mine };
 }
-
-/* ---------- signups ---------- */
 
 function submitSignup(b) {
   if (b.website) return fail('Rejected.');
@@ -376,8 +366,6 @@ function withdrawSignup(b) {
   return { ok: true, slot: view, talk: view.talks[n - 1] };
 }
 
-/* ---------- calendar feed ---------- */
-
 function buildIcs() {
   const st = settings();
   const rows = scheduleRows();
@@ -394,7 +382,6 @@ function buildIcs() {
   rows.forEach(function (r) {
     if (r.type === 'break') return;
 
-    /* One event per date, covering both presenters. */
     const heads = [];
     const lines = [];
     SLOTS.forEach(function (n) {
@@ -476,8 +463,6 @@ function nextDay(dateStr) {
   return fmtDate(d);
 }
 
-/* ---------- reminders ---------- */
-
 function sendReminders() {
   const st = settings();
   if (String(st.remindersEnabled || 'yes').toLowerCase() === 'no') return;
@@ -538,7 +523,6 @@ function shiftDate(dateStr, days) {
   return fmtDate(d);
 }
 
-/* Keyed per presenter slot, so the two labs sharing a date are chased separately. */
 function logKey(kind, date, n) { return kind + '|' + date + '|' + slotNum(n); }
 
 function alreadySent(kind, date, n) {
@@ -557,8 +541,6 @@ function longDate(dateStr) {
   return Utilities.formatDate(d, tz(), 'EEEE d MMMM yyyy');
 }
 
-/* Two labs share each date, so every message below names the presenter slot
-   it is about and is logged against that slot. */
 function slotPhrase(n) { return 'the ' + SLOT_LABELS[slotNum(n) - 1] + ' of the two talks'; }
 
 function mailLab(day, n, labName, days, st) {
@@ -668,8 +650,6 @@ function notifyOrganizer(kind, day, n, labName, days, st) {
   logSent(kind, day.date, n, st.organizerEmail);
 }
 
-/* ---------- email chrome ---------- */
-
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -704,8 +684,6 @@ function stripHtml(html) {
     .replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/\n{3,}/g, '\n\n').trim();
 }
-
-/* ---------- setup ---------- */
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Seminar')
@@ -751,19 +729,13 @@ function setupSheet() {
   );
 }
 
-/* Creates the tab if missing. On a tab that already exists, renames any header
-   in `renames` and appends any expected header that is not there yet, so a
-   sheet built before there were two presenters picks up the new columns
-   without disturbing the data already in it. Everything else reads columns by
-   header name, so appending at the end is safe. */
 function ensure(b, name, headers, renames) {
   let sh = b.getSheetByName(name);
   if (!sh) sh = b.insertSheet(name);
   if (sh.getLastRow() === 0 || String(sh.getRange(1, 1).getValue()).trim() === '') {
     sh.getRange(1, 1, 1, headers.length).setValues([headers]);
   } else {
-    const last = sh.getLastColumn();
-    const keys = sh.getRange(1, 1, 1, last).getValues()[0].map(key);
+    const keys = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(key);
     if (renames) {
       Object.keys(renames).forEach(function (from) {
         const at = keys.indexOf(from);
@@ -773,8 +745,17 @@ function ensure(b, name, headers, renames) {
         }
       });
     }
-    const missing = headers.filter(function (h) { return keys.indexOf(key(h)) < 0; });
-    if (missing.length) sh.getRange(1, last + 1, 1, missing.length).setValues([missing]);
+    headers.forEach(function (h, i) {
+      if (keys.indexOf(key(h)) >= 0) return;
+      let at = 1;
+      for (let j = i - 1; j >= 0; j--) {
+        const p = keys.indexOf(key(headers[j]));
+        if (p >= 0) { at = p + 2; break; }
+      }
+      if (at <= sh.getLastColumn()) sh.insertColumnBefore(at);
+      sh.getRange(1, at).setValue(h);
+      keys.splice(at - 1, 0, key(h));
+    });
   }
   const width = Math.max(headers.length, sh.getLastColumn() || headers.length);
   sh.getRange(1, 1, 1, width).setFontWeight('bold').setBackground('#eef1f5');
@@ -782,7 +763,6 @@ function ensure(b, name, headers, renames) {
   return sh;
 }
 
-/* Sign-ups recorded before there were two presenters belong to slot 1. */
 function backfillSlots() {
   const t = table(TAB_SIGNUPS);
   const col = colIndex(t, 'slot');

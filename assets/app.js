@@ -19,8 +19,6 @@
     'August', 'September', 'October', 'November', 'December'];
   var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-  /* ---------- helpers ---------- */
-
   function $(sel, root) { return (root || document).querySelector(sel); }
   function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   function el(tag, cls, txt) {
@@ -61,8 +59,6 @@
     var u = String(CFG.apiUrl || '').trim();
     return /^https?:\/\/\S+$/.test(u) && u.indexOf('PASTE_YOUR') < 0;
   }
-
-  /* ---------- api ---------- */
 
   var API = {
     get: function (params) {
@@ -163,8 +159,6 @@
       .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(o[k]); }).join('&');
   }
 
-  /* ---------- session ---------- */
-
   function loadSession() {
     try { state.session = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { state.session = null; }
     return state.session;
@@ -175,8 +169,6 @@
     paintSession();
   }
   function myLab() { return state.session && state.session.lab ? state.session.lab : ''; }
-
-  /* ---------- data ---------- */
 
   function absorb(data) {
     state.settings = data.settings || {};
@@ -219,7 +211,6 @@
     }
   }
 
-  /* Each date carries two presenter slots. */
   function talksOf(s) { return (s && s.talks) || []; }
   function filledTalks(s) { return talksOf(s).filter(function (t) { return t.filled; }); }
   function assignedTalks(s) { return talksOf(s).filter(function (t) { return t.lab; }); }
@@ -242,7 +233,6 @@
     return 'needs';
   }
 
-  /* Per-presenter status, for views that list the two separately. */
   function talkStatus(s, t) {
     if (s.type === 'break') return 'break';
     if (s.type === 'special') return 'special';
@@ -260,7 +250,6 @@
     'break': 'No seminar', special: 'Special'
   };
 
-  /* "1 of 2 confirmed" reads better than a fixed label on a part-filled date. */
   function labelFor(s) {
     var st = statusOf(s);
     if (st !== 'partial') return LABELS[st] || '';
@@ -273,8 +262,6 @@
     var t = todayKey();
     return state.slots.filter(function (s) { return s.date >= t && s.type !== 'break'; });
   }
-
-  /* ---------- chrome ---------- */
 
   function paintBranding() {
     var name = state.settings.seriesName || CFG.seriesName || 'Seminar Series';
@@ -344,13 +331,11 @@
     paintSession();
   }
 
-  /* ---------- calendar ---------- */
-
   function monthsInSeason() {
     var seen = [], map = {};
     state.slots.forEach(function (s) {
       var mk = monthKey(s.date);
-      if (!map[mk]) { map[mk] = 0; seen.push(mk); }
+      if (!Object.prototype.hasOwnProperty.call(map, mk)) { map[mk] = 0; seen.push(mk); }
       if (s.type !== 'break') map[mk]++;
     });
     seen.sort();
@@ -428,8 +413,6 @@
     return b;
   }
 
-  /* ---------- list ---------- */
-
   function renderList(host, slots, opts) {
     opts = opts || {};
     host.innerHTML = '';
@@ -502,8 +485,6 @@
     return d;
   }
 
-  /* ---------- modal ---------- */
-
   var veil, modalBody, modalHead, lastFocus;
 
   function ensureModal() {
@@ -551,8 +532,6 @@
 
   function note(kind, text) { return el('div', 'note ' + kind, text); }
 
-  /* idp namespaces the input id, so the two presenter forms on one date can be
-     open together without colliding. */
   function field(label, name, type, value, hint, autoc, idp) {
     var id = 'f_' + (idp || '') + name;
     var w = el('div', 'f');
@@ -671,14 +650,12 @@
     foot.appendChild(close);
     body.appendChild(foot);
 
-    /* If exactly one slot is waiting on the lab you are signed in as, open it. */
     var mine = panels.filter(function (panel) {
       return !panel.talk.filled && panel.talk.lab && myLab() && panel.talk.lab === myLab();
     });
     if (mine.length === 1) mine[0].expand();
   }
 
-  /* One presenter slot inside the day modal: its details, and its own form. */
   function talkPanel(day, t) {
     var node = el('div', 'talk-panel');
     node.appendChild(el('div', 'eyebrow', ordinal(t.n)));
@@ -856,8 +833,6 @@
     body.appendChild(acts);
   }
 
-  /* ---------- ics ---------- */
-
   function icsUrl() {
     return configured() ? CFG.apiUrl + '?action=ics' : '';
   }
@@ -868,7 +843,6 @@
     lines.push('X-WR-CALNAME:' + name);
     state.slots.forEach(function (s) {
       if (s.type === 'break') return;
-      /* One event per date, covering both presenters. */
       var heads = [], desc = [];
       talksOf(s).forEach(function (t) {
         if (t.filled) {
@@ -910,13 +884,9 @@
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   }
 
-  /* ---------- render dispatch ---------- */
-
   var renderers = [];
   function onRender(fn) { renderers.push(fn); }
   function render() { renderers.forEach(function (fn) { try { fn(state); } catch (e) {} }); }
-
-  /* ---------- demo data ---------- */
 
   function demoData() {
     var labNames = ['Okonjo Lab', 'Marchetti Lab', 'Devereux Lab', 'Sato Lab', 'Bennett Lab', 'Ferreira Lab'];
@@ -969,8 +939,6 @@
       slots: slots
     };
   }
-
-  /* ---------- boot ---------- */
 
   window.SEM = {
     state: state, load: load, render: render, onRender: onRender, chrome: chrome,
